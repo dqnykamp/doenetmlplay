@@ -1,128 +1,137 @@
 // use std::string;
 
-use std::{collections::HashMap, ops::Index};
+use std::collections::HashMap;
 
 pub type ComponentName = String;
 
 pub type ComponentNode = Box<dyn ComponentLike>;
 
+pub type ComponentStore = HashMap<ComponentName, ComponentNode>;
 
 fn main() {
-
     // enum ComponentNode {
     //     Text(TextComponent),
     //     FancyText(FancyTextComponent)
     // }
 
-
-    // let components: HashMap<ComponentName, ComponentName> = HashMap::new();
-
+    let mut components: ComponentStore = HashMap::new();
 
     let string1 = String::from("hello");
 
     let my_text2 = TextComponent {
         hidden: false,
-        children: vec![ComponentOrString::String(string1)]
+        copy_source: None,
+        children: vec![ComponentOrString::String(string1)],
     };
 
-    // let string1a = String::from("I'm fancy");
+    components.insert("text2".to_string(), Box::new(my_text2));
 
-    // let my_text3 = FancyTextComponent {
-    //     base_component: ComponentImpl {
-    //         hidden: false,
-    //         children: vec![],
-    //     },
-    //     textlike_children: vec![Box::new(&string1a)],
-    // };
+    let string1a = String::from("I'm fancy");
 
-    
+    let my_text3 = FancyTextComponent {
+        hidden: false,
+        copy_source: None,
+        fancy_level: 2,
+        children: vec![ComponentOrString::String(string1a)],
+    };
+
+    components.insert("text3".to_string(), Box::new(my_text3));
 
     let string2 = String::from(" world!");
     let my_text1 = TextComponent {
         hidden: false,
-        children: vec![ComponentOrString::Component(Box::new(my_text2)), ComponentOrString::String(string2)]
+        copy_source: Some("text_source".to_string()),
+        children: vec![
+            ComponentOrString::Component("text2".to_string()),
+            ComponentOrString::String(string2),
+            ComponentOrString::Component("text3".to_string()),
+        ],
     };
 
-    // println!("{:#?}", my_text1);
+    components.insert("text1".to_string(), Box::new(my_text1));
 
-    let textAsComponentNode: ComponentNode = Box::new(my_text1);
+    let string_source = String::from("copy me!");
 
-    println!("{:?}", textAsComponentNode.get_state_var_value(0).unwrap());
+    let my_text_source = TextComponent {
+        hidden: false,
+        copy_source: None,
+        children: vec![ComponentOrString::String(string_source)],
+    };
 
+    components.insert("text_source".to_string(), Box::new(my_text_source));
 
+    let text_as_component_node = components.get("text1").unwrap();
+
+    println!(
+        "{:?}",
+        text_as_component_node
+            .get_state_var_value(0, &components)
+            .unwrap()
+    );
 }
-
-// struct ComponentDefinition {
-//     component_type: String,
-//     state_variables: StateVariableVariant
-// }
-
-// struct ComponentStateVariables {
-
-// }
 
 pub trait ComponentLike {
     fn get_hidden(&self) -> bool;
 
-    fn get_children(&self) -> &Vec<ComponentOrString>;
+    fn get_children<'a>(&'a self, components: &'a ComponentStore) -> Vec<&'a ComponentOrString>;
 
     fn get_state_var_list(&self) -> Vec<(&'static str, StateVarType)>;
 
-    fn get_state_var_value(&self, ind: usize) -> Option<StateVarValue>;
+    fn get_state_var_value(&self, ind: usize, components: &ComponentStore)
+        -> Option<StateVarValue>;
 
     fn get_component_type(&self) -> &'static str;
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StateVarType {
     Number,
-    String
+    String,
 }
 
 #[derive(Debug, Clone)]
 pub enum StateVarValue {
     Number(f64),
-    String(String)
-}
-
-pub enum ComponentOrString {
-    Component(ComponentNode),
     String(String),
 }
 
-
+pub enum ComponentOrString {
+    Component(ComponentName),
+    String(String),
+}
 
 pub struct TextComponent {
     // value: String,
-
     pub hidden: bool,
 
+    pub copy_source: Option<ComponentName>,
 
     pub children: Vec<ComponentOrString>,
-
 }
 
-
 impl TextComponent {
-    const COMPONENT_TYPE: &'static str = "text";
-
     const STATE_VAR_LIST: [(&str, StateVarType); 1] = [("value", StateVarType::String)];
 
-    fn get_value(&self) -> String {
+    fn get_value(&self, components: &ComponentStore) -> String {
         let mut value = String::from("");
 
-        for child in self.children.iter() {
+        for child in self.get_children(components).iter() {
             match child {
                 ComponentOrString::String(str) => {
                     value.push_str(str);
                 }
-                ComponentOrString::Component(comp) => {
+                ComponentOrString::Component(comp_name) => {
+                    let comp = components.get(comp_name).unwrap();
 
-                    if let Some(ind) = comp.get_state_var_list().iter().position(|x| x == &("value", StateVarType::String)) {
-                        if let Some(StateVarValue::String(str)) = comp.get_state_var_value(ind) {
+                    if let Some(ind) = comp
+                        .get_state_var_list()
+                        .iter()
+                        .position(|x| x == &("value", StateVarType::String))
+                    {
+                        if let Some(StateVarValue::String(str)) =
+                            comp.get_state_var_value(ind, components)
+                        {
                             value.push_str(&str.clone())
-
                         }
                     }
                 }
@@ -133,36 +142,36 @@ impl TextComponent {
     }
 }
 
-// impl<'a> TextLike for TextComponent<'a> {
-//     fn get_value(&self) -> String {
-//         // let children = self.get_children();
-
-//         let mut value = String::from("");
-
-//         for child in self.textlike_children.iter() {
-//             value.push_str(&child.as_ref().get_value())
-//         }
-
-//         value
-//     }
-// }
-
 impl ComponentLike for TextComponent {
     fn get_hidden(&self) -> bool {
         self.hidden
     }
 
-    fn get_children(&self) -> &Vec<ComponentOrString> {
-        &self.children
+    fn get_children<'a>(&'a self, components: &'a ComponentStore) -> Vec<&'a ComponentOrString> {
+        let mut children: Vec<&ComponentOrString> = Vec::new();
+
+        if let Some(copy_source) = &self.copy_source {
+            if let Some(source) = components.get(copy_source) {
+                children.extend(source.get_children(components));
+            }
+        }
+
+        children.extend(self.children.iter());
+
+        children
     }
 
     fn get_state_var_list(&self) -> Vec<(&'static str, StateVarType)> {
         TextComponent::STATE_VAR_LIST.to_vec()
     }
 
-    fn get_state_var_value(&self, ind: usize) -> Option<StateVarValue> {
+    fn get_state_var_value(
+        &self,
+        ind: usize,
+        components: &ComponentStore,
+    ) -> Option<StateVarValue> {
         if ind == 0 {
-            Some(StateVarValue::String(self.get_value()))
+            Some(StateVarValue::String(self.get_value(components)))
         } else {
             None
         }
@@ -173,31 +182,95 @@ impl ComponentLike for TextComponent {
     }
 }
 
-// pub struct FancyTextComponent<'a> {
-//     base_component: ComponentImpl<'a>,
+pub struct FancyTextComponent {
+    // value: String,
+    pub hidden: bool,
 
-//     textlike_children: Vec<Box<&'a dyn TextLike>>,
-// }
+    pub copy_source: Option<ComponentName>,
 
-// impl<'a> TextLike for FancyTextComponent<'a> {
-//     fn get_value(&self) -> String {
-//         let mut value = String::from("**");
+    pub fancy_level: usize,
 
-//         for child in self.textlike_children.iter() {
-//             value.push_str(&child.as_ref().get_value())
-//         }
+    pub children: Vec<ComponentOrString>,
+}
 
-//         value.push_str("**");
+impl FancyTextComponent {
+    const STATE_VAR_LIST: [(&str, StateVarType); 2] = [
+        ("value", StateVarType::String),
+        ("fancy_level", StateVarType::Number),
+    ];
 
-//         value
-//     }
-// }
+    fn get_value(&self, components: &ComponentStore) -> String {
+        let delimiters = "*".repeat(self.fancy_level);
 
-// impl<'a> ComponentLike for FancyTextComponent<'a> {
-//     fn get_hidden(&self) -> bool {
-//         self.base_component.get_hidden()
-//     }
-//     fn get_children(&self) -> &Vec<ComponentOrString> {
-//         &self.base_component.get_children()
-//     }
-// }
+        let mut value = String::from(&delimiters);
+
+        for child in self.get_children(components).iter() {
+            match child {
+                ComponentOrString::String(str) => {
+                    value.push_str(str);
+                }
+                ComponentOrString::Component(comp_name) => {
+                    let comp = components.get(comp_name).unwrap();
+
+                    if let Some(ind) = comp
+                        .get_state_var_list()
+                        .iter()
+                        .position(|x| x == &("value", StateVarType::String))
+                    {
+                        if let Some(StateVarValue::String(str)) =
+                            comp.get_state_var_value(ind, components)
+                        {
+                            value.push_str(&str.clone())
+                        }
+                    }
+                }
+            }
+        }
+
+        value.push_str(&delimiters);
+
+        value
+    }
+}
+
+impl ComponentLike for FancyTextComponent {
+    fn get_hidden(&self) -> bool {
+        self.hidden
+    }
+
+    fn get_children<'a>(&'a self, components: &'a ComponentStore) -> Vec<&'a ComponentOrString> {
+        let mut children: Vec<&ComponentOrString> = Vec::new();
+
+        if let Some(copy_source) = &self.copy_source {
+            if let Some(source) = components.get(copy_source) {
+                children.extend(source.get_children(components));
+            }
+        }
+
+        children.extend(self.children.iter());
+
+        children
+    }
+
+    fn get_state_var_list(&self) -> Vec<(&'static str, StateVarType)> {
+        FancyTextComponent::STATE_VAR_LIST.to_vec()
+    }
+
+    fn get_state_var_value(
+        &self,
+        ind: usize,
+        components: &ComponentStore,
+    ) -> Option<StateVarValue> {
+        if ind == 0 {
+            Some(StateVarValue::String(self.get_value(components)))
+        } else if (ind == 1) {
+            Some(StateVarValue::Number(self.fancy_level as f64))
+        } else {
+            None
+        }
+    }
+
+    fn get_component_type(&self) -> &'static str {
+        "fancy_text"
+    }
+}
