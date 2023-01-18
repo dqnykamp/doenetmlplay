@@ -1,50 +1,53 @@
 // use std::string;
 
+use std::{collections::HashMap, ops::Index};
+
+pub type ComponentName = String;
+
+pub type ComponentNode = Box<dyn ComponentLike>;
+
+
 fn main() {
+
+    // enum ComponentNode {
+    //     Text(TextComponent),
+    //     FancyText(FancyTextComponent)
+    // }
+
+
+    // let components: HashMap<ComponentName, ComponentName> = HashMap::new();
+
+
     let string1 = String::from("hello");
 
-    let my_text2 = Text {
-        base_component: ComponentImpl {
-            hidden: false,
-            children: vec![],
-        },
-        textlike_children: vec![Box::new(&string1)],
+    let my_text2 = TextComponent {
+        hidden: false,
+        children: vec![ComponentOrString::String(string1)]
     };
 
-    let string1a = String::from("I'm fancy");
+    // let string1a = String::from("I'm fancy");
 
-    let my_text3 = FancyText {
-        base_component: ComponentImpl {
-            hidden: false,
-            children: vec![],
-        },
-        textlike_children: vec![Box::new(&string1a)],
-    };
+    // let my_text3 = FancyTextComponent {
+    //     base_component: ComponentImpl {
+    //         hidden: false,
+    //         children: vec![],
+    //     },
+    //     textlike_children: vec![Box::new(&string1a)],
+    // };
 
     
 
     let string2 = String::from(" world!");
-    let my_text1 = Text {
-        base_component: ComponentImpl {
-            hidden: false,
-            children: vec![],
-        },
-        textlike_children: vec![Box::new(&my_text2), Box::new(&string2), Box::new(&my_text3)],
+    let my_text1 = TextComponent {
+        hidden: false,
+        children: vec![ComponentOrString::Component(Box::new(my_text2)), ComponentOrString::String(string2)]
     };
 
     // println!("{:#?}", my_text1);
 
-    println!("{}", my_text1.get_value());
+    let textAsComponentNode: ComponentNode = Box::new(my_text1);
 
-    struct hmm {
-        a: usize,
-        b: usize
-    };
-
-    let v = vec![hmm{a:3,b:2}, hmm{a:5,b:6}];
-
-    let v1 = &v[0];
-
+    println!("{:?}", textAsComponentNode.get_state_var_value(0).unwrap());
 
 
 }
@@ -58,143 +61,143 @@ fn main() {
 
 // }
 
-pub trait Component {
+pub trait ComponentLike {
     fn get_hidden(&self) -> bool;
 
     fn get_children(&self) -> &Vec<ComponentOrString>;
 
-    // fn get_state_variable_value(&self);
+    fn get_state_var_list(&self) -> Vec<(&'static str, StateVarType)>;
+
+    fn get_state_var_value(&self, ind: usize) -> Option<StateVarValue>;
+
+    fn get_component_type(&self) -> &'static str;
+
 }
 
-struct ComponentImpl<'a> {
-    hidden: bool,
-    children: Vec<ComponentOrString<'a>>,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StateVarType {
+    Number,
+    String
 }
 
-impl<'a> Component for ComponentImpl<'a> {
-    fn get_hidden(&self) -> bool {
-        self.hidden
-    }
-    fn get_children(&self) -> &Vec<ComponentOrString> {
-        &self.children
-    }
+#[derive(Debug, Clone)]
+pub enum StateVarValue {
+    Number(f64),
+    String(String)
 }
 
-pub enum ComponentOrString<'a> {
-    Point(Point<'a>),
-    Text(Text<'a>),
+pub enum ComponentOrString {
+    Component(ComponentNode),
     String(String),
 }
 
-pub trait PointLike {
-    fn get_n_dimensions(&self) -> usize;
-    fn get_xs(&self) -> &Vec<f32>;
-    fn get_x(&self, ind: usize) -> f32;
-}
 
-pub struct Point<'a> {
-    xs: Vec<f32>,
-    base_component: ComponentImpl<'a>,
-}
 
-impl<'a> PointLike for Point<'a> {
-    fn get_n_dimensions(&self) -> usize {
-        self.xs.len()
-    }
-    fn get_xs(&self) -> &Vec<f32> {
-        &self.xs
-    }
-    fn get_x(&self, ind: usize) -> f32 {
-        self.xs[ind]
-    }
-}
-
-impl<'a> Component for Point<'a> {
-    fn get_hidden(&self) -> bool {
-        self.base_component.get_hidden()
-    }
-    fn get_children(&self) -> &Vec<ComponentOrString> {
-        &self.base_component.get_children()
-    }
-}
-
-pub trait TextLike {
-    fn get_value(&self) -> String;
-}
-
-pub struct Text<'a> {
+pub struct TextComponent {
     // value: String,
 
-    // Child dependency
-    // 1. value depends on all children with TextLike trait
-    // 2. list of all my textlike children and their appropriate state variables
-    // 3. calculate the value from 2
-    base_component: ComponentImpl<'a>,
+    pub hidden: bool,
 
-    textlike_children: Vec<Box<&'a dyn TextLike>>,
+
+    pub children: Vec<ComponentOrString>,
+
 }
 
 
-impl<'a> Text<'a> {
+impl TextComponent {
     const COMPONENT_TYPE: &'static str = "text";
-}
 
-impl<'a> TextLike for Text<'a> {
+    const STATE_VAR_LIST: [(&str, StateVarType); 1] = [("value", StateVarType::String)];
+
     fn get_value(&self) -> String {
-        // let children = self.get_children();
-
         let mut value = String::from("");
 
-        for child in self.textlike_children.iter() {
-            value.push_str(&child.as_ref().get_value())
+        for child in self.children.iter() {
+            match child {
+                ComponentOrString::String(str) => {
+                    value.push_str(str);
+                }
+                ComponentOrString::Component(comp) => {
+
+                    if let Some(ind) = comp.get_state_var_list().iter().position(|x| x == &("value", StateVarType::String)) {
+                        if let Some(StateVarValue::String(str)) = comp.get_state_var_value(ind) {
+                            value.push_str(&str.clone())
+
+                        }
+                    }
+                }
+            }
         }
 
         value
     }
 }
 
-impl<'a> Component for Text<'a> {
+// impl<'a> TextLike for TextComponent<'a> {
+//     fn get_value(&self) -> String {
+//         // let children = self.get_children();
+
+//         let mut value = String::from("");
+
+//         for child in self.textlike_children.iter() {
+//             value.push_str(&child.as_ref().get_value())
+//         }
+
+//         value
+//     }
+// }
+
+impl ComponentLike for TextComponent {
     fn get_hidden(&self) -> bool {
-        self.base_component.get_hidden()
+        self.hidden
     }
+
     fn get_children(&self) -> &Vec<ComponentOrString> {
-        &self.base_component.get_children()
+        &self.children
     }
-}
 
-pub struct FancyText<'a> {
-    base_component: ComponentImpl<'a>,
+    fn get_state_var_list(&self) -> Vec<(&'static str, StateVarType)> {
+        TextComponent::STATE_VAR_LIST.to_vec()
+    }
 
-    textlike_children: Vec<Box<&'a dyn TextLike>>,
-}
-
-impl<'a> TextLike for FancyText<'a> {
-    fn get_value(&self) -> String {
-        let mut value = String::from("**");
-
-        for child in self.textlike_children.iter() {
-            value.push_str(&child.as_ref().get_value())
+    fn get_state_var_value(&self, ind: usize) -> Option<StateVarValue> {
+        if ind == 0 {
+            Some(StateVarValue::String(self.get_value()))
+        } else {
+            None
         }
+    }
 
-        value.push_str("**");
-
-        value
+    fn get_component_type(&self) -> &'static str {
+        "text"
     }
 }
 
-impl<'a> Component for FancyText<'a> {
-    fn get_hidden(&self) -> bool {
-        self.base_component.get_hidden()
-    }
-    fn get_children(&self) -> &Vec<ComponentOrString> {
-        &self.base_component.get_children()
-    }
-}
+// pub struct FancyTextComponent<'a> {
+//     base_component: ComponentImpl<'a>,
 
-impl TextLike for String {
-    fn get_value(&self) -> String {
-        self.clone()
-    }
-}
+//     textlike_children: Vec<Box<&'a dyn TextLike>>,
+// }
 
-// <text><text>hello <text>hmm</text> </text> $point.x!</text>
+// impl<'a> TextLike for FancyTextComponent<'a> {
+//     fn get_value(&self) -> String {
+//         let mut value = String::from("**");
+
+//         for child in self.textlike_children.iter() {
+//             value.push_str(&child.as_ref().get_value())
+//         }
+
+//         value.push_str("**");
+
+//         value
+//     }
+// }
+
+// impl<'a> ComponentLike for FancyTextComponent<'a> {
+//     fn get_hidden(&self) -> bool {
+//         self.base_component.get_hidden()
+//     }
+//     fn get_children(&self) -> &Vec<ComponentOrString> {
+//         &self.base_component.get_children()
+//     }
+// }
